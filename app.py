@@ -5,6 +5,44 @@ import plotly.express as px
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
+# --- CONFIGURACIÓN DE SEGURIDAD (LOGIN) ---
+def check_password():
+    """Devuelve True si el usuario ingresó las credenciales correctas."""
+    if "authenticated" not in st.session_state:
+        st.session_state["authenticated"] = False
+
+    if st.session_state["authenticated"]:
+        return True
+
+    # Pantalla de Login limpia y minimalista
+    st.markdown("<h2 style='text-align: center;'>🔐 Acceso al Sistema Financiero</h2>", unsafe_allow_html=True)
+    st.write("---")
+    
+    col_login, _ = st.columns([1, 1])
+    with col_login:
+        user_input = st.text_input("Usuario", key="username")
+        password_input = st.text_input("Contraseña", type="password", key="password")
+        btn_login = st.button("Iniciar Sesión")
+
+    if btn_login:
+        # Validar contra los secrets de Streamlit
+        if (user_input == st.secrets["credentials"]["usuario"] and 
+            password_input == st.secrets["credentials"]["password"]):
+            st.session_state["authenticated"] = True
+            st.rerun()
+        else:
+            st.error("❌ Usuario o contraseña incorrectos")
+            
+    return False
+
+# Si no está autenticado, detiene la ejecución de la app aquí
+if not check_password():
+    st.stop()
+
+# --- BOTÓN DE CERRAR SESIÓN EN LA BARRA LATERAL ---
+if st.sidebar.button("🚪 Cerrar Sesión"):
+    st.session_state["authenticated"] = False
+    st.rerun()
 # --- Configuración de Google Sheets ---
 def conectar_gsheets():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
