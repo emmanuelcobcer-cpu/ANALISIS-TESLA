@@ -55,43 +55,92 @@ if data:
     # Aseguramos que la columna Fecha sea tipo datetime
     df['Fecha'] = pd.to_datetime(df['Fecha'])
     
-    # 1. Cálculos de KPIs
-    total_ingresos = df[df['Tipo'] == 'Ingreso']['Monto'].sum()
-    total_gastos = df[df['Tipo'] == 'Gasto']['Monto'].sum()
+    # --- FILTROS EN LA BARRA LATERAL ---
+    st.sidebar.header("🗓️ Filtros de Tiempo")
+    
+    # Extraemos las fechas mínima y máxima reales de tus datos
+    fecha_min = df['Fecha'].min().date()
+    fecha_max = df['Fecha'].max().date()
+    
+    # Selector de rango (rango inicial por defecto: todo el historial)
+    rango_fechas = st.sidebar.date_input(
+        "Selecciona el rango de fechas",
+        value=(fecha_min, fecha_max),
+        min_value=fecha_min,
+        max_value=fecha_max
+    )
+    
+    # Aplicar el filtro dinámico si el usuario seleccionó fecha de inicio y fin
+    if isinstance(rango_fechas, tuple) and len(rango_fechas) == 2:
+        inicio, fin = rango_fechas
+        mask = (df['Fecha'].dt.date >= inicio) & (df['Fecha'].dt.date <= fin)
+        df_filtrado = df.loc[mask]
+    else:
+        df_filtrado = df
+
+    # --- 1. Cálculos de KPIs (Usando los datos filtrados) ---
+    total_ingresos = df_filtrado[df_filtrado['Tipo'] == 'Ingreso']['Monto'].sum()
+    total_gastos = df_filtrado[df_filtrado['Tipo'] == 'Gasto']['Monto'].sum()
     balance = total_ingresos - total_gastos
     
-    # 2. Mostrar KPIs
+    # --- 2. Mostrar KPIs ---
     st.subheader("Resumen General")
     col1, col2, col3 = st.columns(3)
     col1.metric("Total Ingresos", f"${total_ingresos:,.2f}")
     col2.metric("Total Gastos", f"${total_gastos:,.2f}")
-    col3.metric("Balance", f"${balance:,.2f}")
     
-    # 3. Gráfico de Pastel (Distribución de gastos)
-    st.subheader("Distribución de Gastos")
-    df_gastos = df[df['Tipo'] == 'Gasto']
-    if not df_gastos.empty:
-        fig = px.pie(df_gastos, values='Monto', names='Categoria', title="Gastos por Categoría")
-        st.plotly_chart(fig, use_container_width=True)
+    # Formato condicional básico para el balance (Verde si es positivo, rojo si es negativo)
+    if balance >= 0:
+        col3.metric("Balance", f"${balance:,.2f}")
     else:
-        st.info("Aún no hay gastos registrados para graficar.")
+        col3.metric("Balance", f"${balance:,.2f}", delta=f"${balance:,.2f}", delta_color="inverse")
+    
+    # --- 3. Gráficos Interactivos ---
+    col_graf1, col_graf2 = st.columns(2)
+    
+    with col_graf1:
+        st.subheader("Distribución de Gastos")
+        df_gastos = df_filtrado[df_filtrado['Tipo'] == 'Gasto']
+        if not df_gastos.empty:
+            fig_pie = px.pie(df_gastos, values='Monto', names='Categoria', title="Gastos por Categoría")
+            st.plotly_chart(fig_pie, use_container_width=True)
+        else:
+            st.info("No hay gastos registrados en este periodo.")
+            
+    with col_graf2:
+        st.subheader("Tendencia del Periodo")
+        # Agrupamos por día y tipo para ver la evolución
+        df_linea = df_filtrado.copy()
+        df_linea['Fecha_Dia'] = df_linea['Fecha'].dt.date
+        df_agrupado = df_linea.groupby(['Fecha_Dia', 'Tipo'])['Monto'].sum().reset_index()
+        
+        if not df_agrupado.empty:
+            fig_line = px.line(df_agrupado, x='Fecha_Dia', y='Monto', color='Tipo', 
+                               title="Ingresos vs Gastos en el Tiempo", markers=True)
+            st.plotly_chart(fig_line, use_container_width=True)
+        else:
+            st.info("No hay datos para trazar la línea de tendencia.")
 
-    # 4. Tabla de detalles
-    st.subheader("Historial de Movimientos")
-    st.dataframe(df.sort_values(by='Fecha', ascending=False), use_container_width=True)
-    # --- Funcionalidad de Eliminación ---
-st.subheader("🗑️ Eliminar Movimiento")
-# Creamos una lista de los movimientos para seleccionar cuál borrar
-opciones_borrar = df.reset_index().apply(lambda x: f"{x['index']}: {x['Fecha']} - {x['Categoria']} (${x['Monto']})", axis=1)
-seleccion = st.selectbox("Selecciona el movimiento a borrar", opciones_borrar)
+    # --- 4. Tabla de detalles ---
+    st.subheader("📜 Historial de Movimientos")
+    st.dataframe(df_filtrado.sort_values(by='Fecha', ascending=False), use_container_width=True)
+    
+    # --- 5. Funcionalidad de Eliminación (Protegida dentro de 'if data:') ---
+    st.markdown("---")
+    st.subheader("🗑️ Eliminar Movimiento")
+    
+    # Usamos los datos completos del df original para reconstruir los índices reales de gspread
+    opciones_borrar = df.reset_index().apply(
+        lambda x: f"{x['index']}: {x['Fecha'].strftime('%Y-%m-%d %H:%M')} - {x['Categoria']} (${x['Monto']})", axis=1
+    )
+    seleccion = st.selectbox("Selecciona el movimiento que deseas eliminar de la nube:", opciones_borrar)
 
-if st.button("Eliminar seleccionado"):
-    # Obtenemos el índice (el número que sale al principio de la fila)
-    idx = int(seleccion.split(":")[0])
-    # +2 porque Google Sheets tiene fila de encabezado (1) y los índices de gspread empiezan en 1
-    sheet.delete_rows(idx + 2) 
-    st.warning("Movimiento eliminado. Recargando...")
-    st.rerun()
+    if st.button("❌ Confirmar y Eliminar"):
+        idx = int(seleccion.split(":")[0])
+        # +2 por la fila de encabezado de Sheets y desfase de índice base 0 vs base 1
+        sheet.delete_rows(idx + 2) 
+        st.warning("Movimiento eliminado correctamente de Google Sheets. Recargando...")
+        st.rerun()
 
 else:
-    st.info("Aún no hay movimientos registrados.")
+    st.info("Aún no hay movimientos registrados en la base de datos.")
