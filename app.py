@@ -52,13 +52,6 @@ def conectar_gsheets():
     client = gspread.authorize(creds)
     return client.open("MisFinanzas").sheet1
 
-def guardar_movimiento(tipo, categoria, monto, metodo, comentarios):
-    sheet = conectar_gsheets()
-    # Registra solo Año-Mes-Día para evitar problemas de formato
-    fecha = datetime.datetime.now().strftime("%Y-%m-%d")
-    sheet.append_row([fecha, tipo, categoria, float(monto), metodo, comentarios])
-    return True
-
 # --- Interfaz Visual ---
 st.set_page_config(page_title="Control de Finanzas", layout="wide")
 st.title("💰 Control de Finanzas Personales")
@@ -75,12 +68,14 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# --- FORMULARIO DE CAPTURA CON FECHA MANUAL ---
 with st.expander("➕ Agregar nuevo movimiento"):
     with st.form("nuevo_movimiento"):
         col1, col2 = st.columns(2)
         with col1:
+            # 📅 Selector de fecha manual (Por defecto pone el día de hoy)
+            fecha_manual = st.date_input("Fecha del Movimiento", value=datetime.date.today())
             tipo = st.selectbox("Tipo", ["Gasto", "Ingreso"])
-            # Añadimos opción de Ninguna para cuando es un Ingreso limpio
             categoria = st.selectbox("Categoría", ["Alimentación", "Transporte", "Vivienda", "Salud", "Ocio", "Ninguna (Ingreso)", "Otros"])
         with col2:
             monto = st.number_input("Monto", min_value=0.0, step=0.01)
@@ -93,7 +88,14 @@ if submit:
     if monto > 0:
         # Forzar categoría limpia si es ingreso
         cat_final = "Ninguna (Ingreso)" if tipo == "Ingreso" else categoria
-        guardar_movimiento(tipo, cat_final, monto, metodo, comentarios)
+        
+        # Formatear la fecha seleccionada a texto limpio sin horas (AAAA-MM-DD)
+        fecha_str = fecha_manual.strftime("%Y-%m-%d")
+        
+        # Guardar directamente en la nube
+        sheet = conectar_gsheets()
+        sheet.append_row([fecha_str, tipo, cat_final, float(monto), metodo, comentarios])
+        
         st.success("¡Registro guardado en la nube!")
         st.rerun()
     else:
@@ -107,7 +109,7 @@ data = sheet.get_all_records()
 if data:
     df = pd.DataFrame(data)
     
-    # 🔥 BLINDAJE ANTI-ERRORES DE FECHA (Evita que truene el login si metes datos manuales)
+    # 🔥 BLINDAJE ANTI-ERRORES DE FECHA (Evita que truene si metes datos manuales con horas en Sheets)
     df['Fecha'] = df['Fecha'].astype(str).str.split(' ').str[0]
     df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
     df = df.dropna(subset=['Fecha']) # Elimina filas rotas si las hay
@@ -285,7 +287,6 @@ if data:
 
     # --- 4. Tabla de detalles ---
     st.subheader("📜 Historial de Movimientos")
-    # Mostramos el DF con las fechas ordenadas limpiamente
     df_mostrar = df_filtrado.copy()
     df_mostrar['Fecha'] = df_mostrar['Fecha'].dt.strftime('%Y-%m-%d')
     st.dataframe(df_mostrar.sort_values(by='Fecha', ascending=False), use_container_width=True)
@@ -302,7 +303,6 @@ if data:
     st.markdown("---")
     st.subheader("🗑️ Eliminar Movimiento")
     
-    # Mapeamos usando el índice real del DataFrame original para no borrar filas equivocadas al filtrar
     df_con_idx = df.copy()
     df_con_idx['Fecha_Str'] = df_con_idx['Fecha'].dt.strftime('%Y-%m-%d')
     opciones_borrar = df_con_idx.reset_index().apply(
@@ -312,7 +312,7 @@ if data:
 
     if st.button("❌ Confirmar y Eliminar"):
         idx = int(seleccion.split(":")[0])
-        sheet.delete_rows(idx + 2) # Ajuste de cabecera en Google Sheets
+        sheet.delete_rows(idx + 2)
         st.warning("Movimiento eliminado correctamente de Google Sheets. Recargando...")
         st.rerun()
 
