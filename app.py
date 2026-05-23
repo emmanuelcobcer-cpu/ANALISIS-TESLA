@@ -24,6 +24,18 @@ def guardar_movimiento(tipo, categoria, monto, metodo, comentarios):
 st.set_page_config(page_title="Control de Finanzas", layout="wide")
 st.title("💰 Control de Finanzas Personales")
 
+# Estilos globales de CSS para limpiar márgenes y mejorar fuentes
+st.markdown("""
+    <style>
+    .reportview-container .main .block-container{ padding-top: 2rem; }
+    div.stButton > button:first-child {
+        background-color: #2e7d32;
+        color: white;
+        border-radius: 8px;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 with st.expander("➕ Agregar nuevo movimiento"):
     with st.form("nuevo_movimiento"):
         col1, col2 = st.columns(2)
@@ -86,7 +98,6 @@ if data:
     )
     
     # --- APLICAR TODOS LOS FILTROS SIMULTÁNEAMENTE ---
-    # Filtro de fecha
     if isinstance(rango_fechas, tuple) and len(rango_fechas) == 2:
         inicio, fin = rango_fechas
         mask = (df['Fecha'].dt.date >= inicio) & (df['Fecha'].dt.date <= fin)
@@ -94,58 +105,89 @@ if data:
     else:
         df_filtrado = df
         
-    # Filtro de categorías y métodos de pago
     df_filtrado = df_filtrado[
         df_filtrado['Categoria'].isin(categorias_seleccionadas) & 
         df_filtrado['Metodo'].isin(metodos_seleccionados)
     ]
 
-    # --- 1. Cálculos de KPIs (Usando los datos completamente filtrados) ---
+    # --- 1. Cálculos de KPIs ---
     total_ingresos = df_filtrado[df_filtrado['Tipo'] == 'Ingreso']['Monto'].sum()
     total_gastos = df_filtrado[df_filtrado['Tipo'] == 'Gasto']['Monto'].sum()
     balance = total_ingresos - total_gastos
     
-    # --- 2. Mostrar KPIs ---
-    st.subheader("Resumen General")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total Ingresos", f"${total_ingresos:,.2f}")
-    col2.metric("Total Gastos", f"${total_gastos:,.2f}")
-    
+    # Cálculo de la Tasa de Ahorro
+    tasa_ahorro = 0.0
+    if total_ingresos > 0:
+        tasa_ahorro = ((total_ingresos - total_gastos) / total_ingresos) * 100
+
+    # Lógica de color condicional CSS para el Balance y Tasa de Ahorro
     if balance >= 0:
-        col3.metric("Balance", f"${balance:,.2f}")
+        color_balance_bg = "#e8f5e9"  # Verde claro sutil
+        color_balance_txt = "#2e7d32" # Verde oscuro
     else:
-        col3.metric("Balance", f"${balance:,.2f}", delta=f"${balance:,.2f}", delta_color="inverse")
+        color_balance_bg = "#ffebee"  # Rojo claro sutil
+        color_balance_txt = "#c62828" # Rojo oscuro
+    
+    # --- 2. Mostrar KPIs Premium (HTML / CSS) ---
+    st.subheader("📊 Resumen General")
+    
+    kpi_html = f"""
+    <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 25px;">
+        <div style="flex: 1; min-width: 200px; background-color: #f8f9fa; border-left: 5px solid #1565c0; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <p style="margin:0; font-size: 14px; color: #6c757d; font-weight: bold; text-transform: uppercase;">Total Ingresos</p>
+            <h2 style="margin:5px 0 0 0; color: #1565c0; font-size: 28px;">${total_ingresos:,.2f}</h2>
+        </div>
+        <div style="flex: 1; min-width: 200px; background-color: #f8f9fa; border-left: 5px solid #d32f2f; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <p style="margin:0; font-size: 14px; color: #6c757d; font-weight: bold; text-transform: uppercase;">Total Gastos</p>
+            <h2 style="margin:5px 0 0 0; color: #d32f2f; font-size: 28px;">${total_gastos:,.2f}</h2>
+        </div>
+        <div style="flex: 1; min-width: 200px; background-color: {color_balance_bg}; border-left: 5px solid {color_balance_txt}; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <p style="margin:0; font-size: 14px; color: #6c757d; font-weight: bold; text-transform: uppercase;">Balance Neto</p>
+            <h2 style="margin:5px 0 0 0; color: {color_balance_txt}; font-size: 28px;">${balance:,.2f}</h2>
+        </div>
+        <div style="flex: 1; min-width: 200px; background-color: #f8f9fa; border-left: 5px solid #ef6c00; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <p style="margin:0; font-size: 14px; color: #6c757d; font-weight: bold; text-transform: uppercase;">Tasa de Ahorro</p>
+            <h2 style="margin:5px 0 0 0; color: #ef6c00; font-size: 28px;">{tasa_ahorro:.1f}%</h2>
+        </div>
+    </div>
+    """
+    st.markdown(kpi_html, unsafe_allow_html=True)
     
     # --- 3. Gráficos Interactivos ---
     col_graf1, col_graf2 = st.columns(2)
     
     with col_graf1:
-        st.subheader("Distribución de Gastos")
+        st.subheader("🎯 Distribución de Gastos")
         df_gastos = df_filtrado[df_filtrado['Tipo'] == 'Gasto']
         if not df_gastos.empty:
-            fig_pie = px.pie(df_gastos, values='Monto', names='Categoria', title="Gastos por Categoría")
+            # Añadimos una paleta de colores limpia y moderna
+            fig_pie = px.pie(df_gastos, values='Monto', names='Categoria', 
+                             color_discrete_sequence=px.colors.qualitative.Safe)
+            fig_pie.update_layout(margin=dict(t=20, b=20, l=20, r=20))
             st.plotly_chart(fig_pie, use_container_width=True)
         else:
             st.info("No hay gastos registrados que coincidan con los filtros.")
             
     with col_graf2:
-        st.subheader("Tendencia del Periodo")
+        st.subheader("📈 Tendencia del Periodo")
         df_linea = df_filtrado.copy()
         df_linea['Fecha_Dia'] = df_linea['Fecha'].dt.date
         df_agrupado = df_linea.groupby(['Fecha_Dia', 'Tipo'])['Monto'].sum().reset_index()
         
         if not df_agrupado.empty:
-            fig_line = px.line(df_agrupado, x='Fecha_Dia', y='Monto', color='Tipo', 
-                               title="Ingresos vs Gastos en el Tiempo", markers=True)
+            fig_line = px.line(df_agrupado, x='Fecha_Dia', y='Monto', color='Tipo',
+                               color_discrete_map={'Ingreso': '#1565c0', 'Gasto': '#d32f2f'},
+                               markers=True)
+            fig_line.update_layout(margin=dict(t=20, b=20, l=20, r=20), xaxis_title="Fecha", yaxis_title="Monto ($)")
             st.plotly_chart(fig_line, use_container_width=True)
         else:
-            st.info("No hay datos suficientes para trazar la tendencia con los filtros actuales.")
+            st.info("No hay datos suficientes para trazar la tendencia.")
 
     # --- 4. Tabla de detalles ---
     st.subheader("📜 Historial de Movimientos")
     st.dataframe(df_filtrado.sort_values(by='Fecha', ascending=False), use_container_width=True)
     
-    # --- 5. Funcionalidad de Eliminación (Usa el df completo para mantener índices correctos) ---
+    # --- 5. Funcionalidad de Eliminación ---
     st.markdown("---")
     st.subheader("🗑️ Eliminar Movimiento")
     
