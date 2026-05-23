@@ -144,7 +144,6 @@ def generar_enviar_reporte():
         msg.attach(part)
 
     # Conexión segura con el servidor de Gmail
-    server = smtplib.SMTP('smtp.gmail.com', 557) # Puerto TLS tradicional o 587
     server = smtplib.SMTP('smtp.gmail.com', 587)
     server.starttls()
     server.login(remitente, password)
