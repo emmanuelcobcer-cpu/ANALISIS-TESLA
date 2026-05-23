@@ -64,13 +64,11 @@ data = sheet.get_all_records()
 
 if data:
     df = pd.DataFrame(data)
-    # Aseguramos que la columna Fecha sea tipo datetime
     df['Fecha'] = pd.to_datetime(df['Fecha'])
     
     # --- FILTROS EN LA BARRA LATERAL ---
     st.sidebar.header("🔍 Filtros Avanzados")
     
-    # 1. Filtro de Tiempo
     fecha_min = df['Fecha'].min().date()
     fecha_max = df['Fecha'].max().date()
     
@@ -81,7 +79,6 @@ if data:
         max_value=fecha_max
     )
     
-    # 2. Filtro por Categoría (Multiselect)
     categorias_disponibles = sorted(df['Categoria'].unique().tolist())
     categorias_seleccionadas = st.sidebar.multiselect(
         "Filtrar por Categoría",
@@ -89,7 +86,6 @@ if data:
         default=categorias_disponibles
     )
     
-    # 3. Filtro por Método de Pago (Multiselect)
     metodos_disponibles = sorted(df['Metodo'].unique().tolist())
     metodos_seleccionados = st.sidebar.multiselect(
         "Filtrar por Método de Pago",
@@ -97,13 +93,18 @@ if data:
         default=metodos_disponibles
     )
     
+    # Meta de Presupuesto Mensual configurable desde la barra lateral
+    PRESUPUESTO_MENSUAL = st.sidebar.number_input("🎯 Meta Gasto Mensual ($)", min_value=1000.0, value=16000.0, step=500.0)
+    
     # --- APLICAR TODOS LOS FILTROS SIMULTÁNEAMENTE ---
     if isinstance(rango_fechas, tuple) and len(rango_fechas) == 2:
         inicio, fin = rango_fechas
         mask = (df['Fecha'].dt.date >= inicio) & (df['Fecha'].dt.date <= fin)
         df_filtrado = df.loc[mask]
+        dias_del_periodo = max((fin - inicio).days, 1)
     else:
         df_filtrado = df
+        dias_del_periodo = 1
         
     df_filtrado = df_filtrado[
         df_filtrado['Categoria'].isin(categorias_seleccionadas) & 
@@ -118,6 +119,8 @@ if data:
     tasa_ahorro = 0.0
     if total_ingresos > 0:
         tasa_ahorro = ((total_ingresos - total_gastos) / total_ingresos) * 100
+        
+    gasto_diario = total_gastos / dias_del_periodo
 
     if balance >= 0:
         color_balance_bg = "#e8f5e9"
@@ -130,26 +133,46 @@ if data:
     st.subheader("📊 Resumen General")
     
     kpi_html = f"""
-    <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 25px;">
+    <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 10px;">
         <div style="flex: 1; min-width: 200px; background-color: #f8f9fa; border-left: 5px solid #1565c0; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
             <p style="margin:0; font-size: 14px; color: #6c757d; font-weight: bold; text-transform: uppercase;">Total Ingresos</p>
-            <h2 style="margin:5px 0 0 0; color: #1565c0; font-size: 28px;">${total_ingresos:,.2f}</h2>
+            <h2 style="margin:5px 0 0 0; color: #1565c0; font-size: 26px;">${total_ingresos:,.2f}</h2>
         </div>
         <div style="flex: 1; min-width: 200px; background-color: #f8f9fa; border-left: 5px solid #d32f2f; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
             <p style="margin:0; font-size: 14px; color: #6c757d; font-weight: bold; text-transform: uppercase;">Total Gastos</p>
-            <h2 style="margin:5px 0 0 0; color: #d32f2f; font-size: 28px;">${total_gastos:,.2f}</h2>
+            <h2 style="margin:5px 0 0 0; color: #d32f2f; font-size: 26px;">${total_gastos:,.2f}</h2>
         </div>
         <div style="flex: 1; min-width: 200px; background-color: {color_balance_bg}; border-left: 5px solid {color_balance_txt}; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
             <p style="margin:0; font-size: 14px; color: #6c757d; font-weight: bold; text-transform: uppercase;">Balance Neto</p>
-            <h2 style="margin:5px 0 0 0; color: {color_balance_txt}; font-size: 28px;">${balance:,.2f}</h2>
+            <h2 style="margin:5px 0 0 0; color: {color_balance_txt}; font-size: 26px;">${balance:,.2f}</h2>
         </div>
         <div style="flex: 1; min-width: 200px; background-color: #f8f9fa; border-left: 5px solid #ef6c00; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
             <p style="margin:0; font-size: 14px; color: #6c757d; font-weight: bold; text-transform: uppercase;">Tasa de Ahorro</p>
-            <h2 style="margin:5px 0 0 0; color: #ef6c00; font-size: 28px;">{tasa_ahorro:.1f}%</h2>
+            <h2 style="margin:5px 0 0 0; color: #ef6c00; font-size: 26px;">{tasa_ahorro:.1f}%</h2>
+        </div>
+        <div style="flex: 1; min-width: 200px; background-color: #f8f9fa; border-left: 5px solid #7e57c2; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <p style="margin:0; font-size: 14px; color: #6c757d; font-weight: bold; text-transform: uppercase;">Gasto Promedio Diario</p>
+            <h2 style="margin:5px 0 0 0; color: #7e57c2; font-size: 26px;">${gasto_diario:,.2f}</h2>
         </div>
     </div>
     """
     st.markdown(kpi_html, unsafe_allow_html=True)
+    
+    # --- CONTROL DE PRESUPUESTO ---
+    porcentaje_gasto = min((total_gastos / PRESUPUESTO_MENSUAL) * 100, 100.0)
+    color_barra = "#d32f2f" if porcentaje_gasto >= 90 else "#ef6c00" if porcentaje_gasto >= 70 else "#2e7d32"
+    
+    st.markdown(f"""
+        <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 14px; font-weight: bold; color: #495057;">
+                <span>🎯 Estado del Presupuesto Mensual</span>
+                <span>${total_gastos:,.2f} / ${PRESUPUESTO_MENSUAL:,.2f} ({porcentaje_gasto:.1f}%)</span>
+            </div>
+            <div style="background-color: #e9ecef; border-radius: 4px; height: 12px; width: 100%; overflow: hidden;">
+                <div style="background-color: {color_barra}; height: 100%; width: {porcentaje_gasto}%; border-radius: 4px; transition: width 0.5s ease;"></div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
     
     # --- 3. Gráficos Interactivos (Fila 1) ---
     st.subheader("📈 Análisis de Distribución y Tendencias")
@@ -182,15 +205,14 @@ if data:
         else:
             st.info("No hay datos suficientes para trazar la tendencia.")
 
-    # --- Gráficos Interactivos (Fila 2 - Nuevas de Barras) ---
+    # --- Gráficos Interactivos (Fila 2) ---
     col_graf3, col_graf4 = st.columns(2)
     
     with col_graf3:
         st.write("**Ranking de Gastos (Mayor a Menor)**")
         if not df_gastos.empty:
-            # Agrupamos por categoría y ordenamos
             df_bar_cat = df_gastos.groupby('Categoria')['Monto'].sum().reset_index()
-            df_bar_cat = df_bar_cat.sort_values(by='Monto', ascending=True) # Ascending True para que la barra más larga quede arriba
+            df_bar_cat = df_bar_cat.sort_values(by='Monto', ascending=True)
             
             fig_bar_h = px.bar(df_bar_cat, x='Monto', y='Categoria', orientation='h',
                                labels={'Monto': 'Total Gastado ($)', 'Categoria': 'Categoría'},
@@ -203,7 +225,6 @@ if data:
     with col_graf4:
         st.write("**Comparativa Mensual (Ingresos vs Gastos)**")
         df_mensual = df_filtrado.copy()
-        # Creamos una columna tipo 'Año-Mes' (Ej: 2026-05) para agrupar
         df_mensual['Mes'] = df_mensual['Fecha'].dt.strftime('%Y-%m')
         df_bars_m = df_mensual.groupby(['Mes', 'Tipo'])['Monto'].sum().reset_index()
         
@@ -219,6 +240,15 @@ if data:
     # --- 4. Tabla de detalles ---
     st.subheader("📜 Historial de Movimientos")
     st.dataframe(df_filtrado.sort_values(by='Fecha', ascending=False), use_container_width=True)
+    
+    # Botón de descarga de datos justo debajo de la tabla
+    csv = df_filtrado.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="📥 Descargar datos filtrados (CSV)",
+        data=csv,
+        file_name='MisFinanzas_Filtrado.csv',
+        mime='text/csv',
+    )
     
     # --- 5. Funcionalidad de Eliminación ---
     st.markdown("---")
