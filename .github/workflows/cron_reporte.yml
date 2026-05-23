@@ -30,4 +30,4 @@ jobs:
           CORREO_PASSWORD: ${{ secrets.CORREO_PASSWORD }}
         run: |
           # Quitamos temporalmente el candado de fecha para que la prueba de hoy funcione
-          python reporte_mensual.py
+          python reportemensual.py
