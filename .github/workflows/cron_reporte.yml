@@ -29,5 +29,9 @@ jobs:
           CORREO_DESTINATARIO: ${{ secrets.CORREO_DESTINATARIO }}
           CORREO_PASSWORD: ${{ secrets.CORREO_PASSWORD }}
         run: |
-          # Quitamos temporalmente el candado de fecha para que la prueba de hoy funcione
-          python reportemensual.py
+            # Validación en bash para asegurar que solo corra el ÚLTIMO día del mes real
+            if [ $(date -d "+1 day" +%d) -eq 1 ]; then
+                python reportemensual.py
+            else
+            echo "Hoy no es el último día del mes. Saltando ejecución."
+            fi
