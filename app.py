@@ -115,20 +115,18 @@ if data:
     total_gastos = df_filtrado[df_filtrado['Tipo'] == 'Gasto']['Monto'].sum()
     balance = total_ingresos - total_gastos
     
-    # Cálculo de la Tasa de Ahorro
     tasa_ahorro = 0.0
     if total_ingresos > 0:
         tasa_ahorro = ((total_ingresos - total_gastos) / total_ingresos) * 100
 
-    # Lógica de color condicional CSS para el Balance y Tasa de Ahorro
     if balance >= 0:
-        color_balance_bg = "#e8f5e9"  # Verde claro sutil
-        color_balance_txt = "#2e7d32" # Verde oscuro
+        color_balance_bg = "#e8f5e9"
+        color_balance_txt = "#2e7d32"
     else:
-        color_balance_bg = "#ffebee"  # Rojo claro sutil
-        color_balance_txt = "#c62828" # Rojo oscuro
+        color_balance_bg = "#ffebee"
+        color_balance_txt = "#c62828"
     
-    # --- 2. Mostrar KPIs Premium (HTML / CSS) ---
+    # --- 2. Mostrar KPIs Premium ---
     st.subheader("📊 Resumen General")
     
     kpi_html = f"""
@@ -153,23 +151,24 @@ if data:
     """
     st.markdown(kpi_html, unsafe_allow_html=True)
     
-    # --- 3. Gráficos Interactivos ---
+    # --- 3. Gráficos Interactivos (Fila 1) ---
+    st.subheader("📈 Análisis de Distribución y Tendencias")
     col_graf1, col_graf2 = st.columns(2)
     
+    df_gastos = df_filtrado[df_filtrado['Tipo'] == 'Gasto']
+    
     with col_graf1:
-        st.subheader("🎯 Distribución de Gastos")
-        df_gastos = df_filtrado[df_filtrado['Tipo'] == 'Gasto']
+        st.write("**Proporción de Gastos**")
         if not df_gastos.empty:
-            # Añadimos una paleta de colores limpia y moderna
             fig_pie = px.pie(df_gastos, values='Monto', names='Categoria', 
                              color_discrete_sequence=px.colors.qualitative.Safe)
-            fig_pie.update_layout(margin=dict(t=20, b=20, l=20, r=20))
+            fig_pie.update_layout(margin=dict(t=10, b=10, l=10, r=10))
             st.plotly_chart(fig_pie, use_container_width=True)
         else:
-            st.info("No hay gastos registrados que coincidan con los filtros.")
+            st.info("No hay gastos registrados para este periodo.")
             
     with col_graf2:
-        st.subheader("📈 Tendencia del Periodo")
+        st.write("**Evolución Diaria**")
         df_linea = df_filtrado.copy()
         df_linea['Fecha_Dia'] = df_linea['Fecha'].dt.date
         df_agrupado = df_linea.groupby(['Fecha_Dia', 'Tipo'])['Monto'].sum().reset_index()
@@ -178,10 +177,44 @@ if data:
             fig_line = px.line(df_agrupado, x='Fecha_Dia', y='Monto', color='Tipo',
                                color_discrete_map={'Ingreso': '#1565c0', 'Gasto': '#d32f2f'},
                                markers=True)
-            fig_line.update_layout(margin=dict(t=20, b=20, l=20, r=20), xaxis_title="Fecha", yaxis_title="Monto ($)")
+            fig_line.update_layout(margin=dict(t=10, b=10, l=10, r=10), xaxis_title=None, yaxis_title="Monto ($)")
             st.plotly_chart(fig_line, use_container_width=True)
         else:
             st.info("No hay datos suficientes para trazar la tendencia.")
+
+    # --- Gráficos Interactivos (Fila 2 - Nuevas de Barras) ---
+    col_graf3, col_graf4 = st.columns(2)
+    
+    with col_graf3:
+        st.write("**Ranking de Gastos (Mayor a Menor)**")
+        if not df_gastos.empty:
+            # Agrupamos por categoría y ordenamos
+            df_bar_cat = df_gastos.groupby('Categoria')['Monto'].sum().reset_index()
+            df_bar_cat = df_bar_cat.sort_values(by='Monto', ascending=True) # Ascending True para que la barra más larga quede arriba
+            
+            fig_bar_h = px.bar(df_bar_cat, x='Monto', y='Categoria', orientation='h',
+                               labels={'Monto': 'Total Gastado ($)', 'Categoria': 'Categoría'},
+                               color='Monto', color_continuous_scale='Reds')
+            fig_bar_h.update_layout(margin=dict(t=10, b=10, l=10, r=10), coloraxis_showscale=False)
+            st.plotly_chart(fig_bar_h, use_container_width=True)
+        else:
+            st.info("No hay gastos registrados para generar el ranking.")
+            
+    with col_graf4:
+        st.write("**Comparativa Mensual (Ingresos vs Gastos)**")
+        df_mensual = df_filtrado.copy()
+        # Creamos una columna tipo 'Año-Mes' (Ej: 2026-05) para agrupar
+        df_mensual['Mes'] = df_mensual['Fecha'].dt.strftime('%Y-%m')
+        df_bars_m = df_mensual.groupby(['Mes', 'Tipo'])['Monto'].sum().reset_index()
+        
+        if not df_bars_m.empty:
+            fig_bar_v = px.bar(df_bars_m, x='Mes', y='Monto', color='Tipo', barmode='group',
+                               color_discrete_map={'Ingreso': '#1565c0', 'Gasto': '#d32f2f'},
+                               labels={'Monto': 'Monto Total ($)', 'Mes': 'Mes'})
+            fig_bar_v.update_layout(margin=dict(t=10, b=10, l=10, r=10))
+            st.plotly_chart(fig_bar_v, use_container_width=True)
+        else:
+            st.info("No hay datos suficientes para la comparativa mensual.")
 
     # --- 4. Tabla de detalles ---
     st.subheader("📜 Historial de Movimientos")
