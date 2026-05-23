@@ -43,18 +43,19 @@ if not check_password():
 if st.sidebar.button("🚪 Cerrar Sesión"):
     st.session_state["authenticated"] = False
     st.rerun()
+
 # --- Configuración de Google Sheets ---
 def conectar_gsheets():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds_dict = st.secrets["gcp_service_account"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
-    # Nombre de tu hoja de cálculo
     return client.open("MisFinanzas").sheet1
 
 def guardar_movimiento(tipo, categoria, monto, metodo, comentarios):
     sheet = conectar_gsheets()
-    fecha = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # Registra solo Año-Mes-Día para evitar problemas de formato
+    fecha = datetime.datetime.now().strftime("%Y-%m-%d")
     sheet.append_row([fecha, tipo, categoria, float(monto), metodo, comentarios])
     return True
 
@@ -78,22 +79,25 @@ with st.expander("➕ Agregar nuevo movimiento"):
     with st.form("nuevo_movimiento"):
         col1, col2 = st.columns(2)
         with col1:
-            tipo = st.selectbox("Tipo", ["Ingreso", "Gasto"])
-            categoria = st.selectbox("Categoría", ["Alimentación", "Transporte", "Vivienda", "Salud", "Ocio", "Otros"])
+            tipo = st.selectbox("Tipo", ["Gasto", "Ingreso"])
+            # Añadimos opción de Ninguna para cuando es un Ingreso limpio
+            categoria = st.selectbox("Categoría", ["Alimentación", "Transporte", "Vivienda", "Salud", "Ocio", "Ninguna (Ingreso)", "Otros"])
         with col2:
             monto = st.number_input("Monto", min_value=0.0, step=0.01)
-            metodo = st.selectbox("Método de Pago", ["Efectivo", "Tarjeta", "Transferencia"])
+            metodo = st.selectbox("Método de Pago", ["Tarjeta", "Transferencia", "Efectivo"])
         
         comentarios = st.text_area("Comentarios (Opcional)")
         submit = st.form_submit_button("Guardar Movimiento")
 
 if submit:
-    if categoria and monto > 0:
-        guardar_movimiento(tipo, categoria, monto, metodo, comentarios)
+    if monto > 0:
+        # Forzar categoría limpia si es ingreso
+        cat_final = "Ninguna (Ingreso)" if tipo == "Ingreso" else categoria
+        guardar_movimiento(tipo, cat_final, monto, metodo, comentarios)
         st.success("¡Registro guardado en la nube!")
         st.rerun()
     else:
-        st.error("Por favor, ingresa una categoría y un monto válido.")
+        st.error("Por favor, ingresa un monto válido mayor a 0.")
 
 # --- Dashboard desde Google Sheets ---
 st.divider()
@@ -102,7 +106,11 @@ data = sheet.get_all_records()
 
 if data:
     df = pd.DataFrame(data)
-    df['Fecha'] = pd.to_datetime(df['Fecha'])
+    
+    # 🔥 BLINDAJE ANTI-ERRORES DE FECHA (Evita que truene el login si metes datos manuales)
+    df['Fecha'] = df['Fecha'].astype(str).str.split(' ').str[0]
+    df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
+    df = df.dropna(subset=['Fecha']) # Elimina filas rotas si las hay
     
     # --- FILTROS EN LA BARRA LATERAL ---
     st.sidebar.header("🔍 Filtros Avanzados")
@@ -131,10 +139,10 @@ if data:
         default=metodos_disponibles
     )
     
-    # Meta de Presupuesto Mensual configurable desde la barra lateral
+    # Meta de Presupuesto Mensual
     PRESUPUESTO_MENSUAL = st.sidebar.number_input("🎯 Meta Gasto Mensual ($)", min_value=1000.0, value=16000.0, step=500.0)
     
-    # --- APLICAR TODOS LOS FILTROS SIMULTÁNEAMENTE ---
+    # --- APLICAR FILTROS ---
     if isinstance(rango_fechas, tuple) and len(rango_fechas) == 2:
         inicio, fin = rango_fechas
         mask = (df['Fecha'].dt.date >= inicio) & (df['Fecha'].dt.date <= fin)
@@ -277,9 +285,11 @@ if data:
 
     # --- 4. Tabla de detalles ---
     st.subheader("📜 Historial de Movimientos")
-    st.dataframe(df_filtrado.sort_values(by='Fecha', ascending=False), use_container_width=True)
+    # Mostramos el DF con las fechas ordenadas limpiamente
+    df_mostrar = df_filtrado.copy()
+    df_mostrar['Fecha'] = df_mostrar['Fecha'].dt.strftime('%Y-%m-%d')
+    st.dataframe(df_mostrar.sort_values(by='Fecha', ascending=False), use_container_width=True)
     
-    # Botón de descarga de datos justo debajo de la tabla
     csv = df_filtrado.to_csv(index=False).encode('utf-8')
     st.download_button(
         label="📥 Descargar datos filtrados (CSV)",
@@ -288,18 +298,21 @@ if data:
         mime='text/csv',
     )
     
-    # --- 5. Funcionalidad de Eliminación ---
+    # --- 5. Funcionalidad de Eliminación Basada en Índice Real ---
     st.markdown("---")
     st.subheader("🗑️ Eliminar Movimiento")
     
-    opciones_borrar = df.reset_index().apply(
-        lambda x: f"{x['index']}: {x['Fecha'].strftime('%Y-%m-%d %H:%M')} - {x['Categoria']} (${x['Monto']})", axis=1
+    # Mapeamos usando el índice real del DataFrame original para no borrar filas equivocadas al filtrar
+    df_con_idx = df.copy()
+    df_con_idx['Fecha_Str'] = df_con_idx['Fecha'].dt.strftime('%Y-%m-%d')
+    opciones_borrar = df_con_idx.reset_index().apply(
+        lambda x: f"{x['index']}: {x['Fecha_Str']} - {x['Categoria']} (${x['Monto']})", axis=1
     )
     seleccion = st.selectbox("Selecciona el movimiento que deseas eliminar de la nube:", opciones_borrar)
 
     if st.button("❌ Confirmar y Eliminar"):
         idx = int(seleccion.split(":")[0])
-        sheet.delete_rows(idx + 2) 
+        sheet.delete_rows(idx + 2) # Ajuste de cabecera en Google Sheets
         st.warning("Movimiento eliminado correctamente de Google Sheets. Recargando...")
         st.rerun()
 
