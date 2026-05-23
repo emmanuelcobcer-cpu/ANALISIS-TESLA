@@ -49,13 +49,36 @@ if submit:
 st.divider()
 sheet = conectar_gsheets()
 data = sheet.get_all_records()
+
 if data:
     df = pd.DataFrame(data)
+    # Aseguramos que la columna Fecha sea tipo datetime
     df['Fecha'] = pd.to_datetime(df['Fecha'])
     
-    # ... (Tu código de gráficos y KPIs sigue igual)
-    # Solo asegúrate de que el df sea el que viene de Sheets
-    st.write("Datos cargados desde la nube con éxito.")
-    # (Aquí va el resto de tu código de gráficos...)
+    # 1. Cálculos de KPIs
+    total_ingresos = df[df['Tipo'] == 'Ingreso']['Monto'].sum()
+    total_gastos = df[df['Tipo'] == 'Gasto']['Monto'].sum()
+    balance = total_ingresos - total_gastos
+    
+    # 2. Mostrar KPIs
+    st.subheader("Resumen General")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Ingresos", f"${total_ingresos:,.2f}")
+    col2.metric("Total Gastos", f"${total_gastos:,.2f}")
+    col3.metric("Balance", f"${balance:,.2f}")
+    
+    # 3. Gráfico de Pastel (Distribución de gastos)
+    st.subheader("Distribución de Gastos")
+    df_gastos = df[df['Tipo'] == 'Gasto']
+    if not df_gastos.empty:
+        fig = px.pie(df_gastos, values='Monto', names='Categoria', title="Gastos por Categoría")
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Aún no hay gastos registrados para graficar.")
+
+    # 4. Tabla de detalles
+    st.subheader("Historial de Movimientos")
+    st.dataframe(df.sort_values(by='Fecha', ascending=False), use_container_width=True)
+
 else:
     st.info("Aún no hay movimientos registrados.")
