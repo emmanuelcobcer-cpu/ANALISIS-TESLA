@@ -1,0 +1,38 @@
+name: Envio Automatizado de Reporte Mensual Finanzas
+
+on:
+  schedule:
+    # Corre el día 28, 29, 30 y 31 de cada mes a las 23:00 UTC. 
+    # El script validará internamente si es el último día del mes.
+    - cron: '0 23 28-31 * *'
+  workflow_dispatch: # Te permite picar un botón en GitHub para probarlo manualmente cuando quieras
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v3
+
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Instalar Dependencias
+        run: |
+          pip install pandas gspread oauth2client fpdf2
+
+      - name: Ejecutar Script de Reporte
+        env:
+          GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          CORREO_REMITENTE: ${{ secrets.CORREO_REMITENTE }}
+          CORREO_DESTINATARIO: ${{ secrets.CORREO_DESTINATARIO }}
+          CORREO_PASSWORD: ${{ secrets.CORREO_PASSWORD }}
+        run: |
+          # Validación opcional en bash para asegurar que solo corra el ULTIMO día del mes real
+          if [ $(date -d "+1 day" +%d) -eq 1 ]; then
+            python reporte_mensual.py
+          else
+            echo "Hoy no es el último día del mes. Saltando ejecución."
+          fi
