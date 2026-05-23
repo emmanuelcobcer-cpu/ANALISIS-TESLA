@@ -2,10 +2,9 @@ name: Envio Automatizado de Reporte Mensual Finanzas
 
 on:
   schedule:
-    # Corre el día 28, 29, 30 y 31 de cada mes a las 23:00 UTC. 
-    # El script validará internamente si es el último día del mes.
+    # Corre el día 28, 29, 30 y 31 de cada mes a las 23:00 UTC.
     - cron: '0 23 28-31 * *'
-  workflow_dispatch: # Te permite picar un botón en GitHub para probarlo manualmente cuando quieras
+  workflow_dispatch: # Te permite picar el botón en GitHub para probarlo manualmente cuando quieras
 
 jobs:
   build:
@@ -17,7 +16,7 @@ jobs:
       - name: Configurar Python
         uses: actions/setup-python@v5
         with:
-          python-python-version: '3.10'
+          python-version: '3.10' # <--- Corregido aquí para evitar el error de sintaxis
 
       - name: Instalar Dependencias
         run: |
@@ -30,9 +29,5 @@ jobs:
           CORREO_DESTINATARIO: ${{ secrets.CORREO_DESTINATARIO }}
           CORREO_PASSWORD: ${{ secrets.CORREO_PASSWORD }}
         run: |
-          # Validación opcional en bash para asegurar que solo corra el ULTIMO día del mes real
-          if [ $(date -d "+1 day" +%d) -eq 1 ]; then
-            python reporte_mensual.py
-          else
-            echo "Hoy no es el último día del mes. Saltando ejecución."
-          fi
+          # Quitamos temporalmente el candado de fecha para que la prueba de hoy funcione
+          python reporte_mensual.py
