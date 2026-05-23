@@ -79,6 +79,19 @@ if data:
     # 4. Tabla de detalles
     st.subheader("Historial de Movimientos")
     st.dataframe(df.sort_values(by='Fecha', ascending=False), use_container_width=True)
+    # --- Funcionalidad de Eliminación ---
+st.subheader("🗑️ Eliminar Movimiento")
+# Creamos una lista de los movimientos para seleccionar cuál borrar
+opciones_borrar = df.reset_index().apply(lambda x: f"{x['index']}: {x['Fecha']} - {x['Categoria']} (${x['Monto']})", axis=1)
+seleccion = st.selectbox("Selecciona el movimiento a borrar", opciones_borrar)
+
+if st.button("Eliminar seleccionado"):
+    # Obtenemos el índice (el número que sale al principio de la fila)
+    idx = int(seleccion.split(":")[0])
+    # +2 porque Google Sheets tiene fila de encabezado (1) y los índices de gspread empiezan en 1
+    sheet.delete_rows(idx + 2) 
+    st.warning("Movimiento eliminado. Recargando...")
+    st.rerun()
 
 else:
     st.info("Aún no hay movimientos registrados.")
